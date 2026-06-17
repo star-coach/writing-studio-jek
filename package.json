@@ -1,0 +1,8 @@
+{
+  "name": "blog-pipeline",
+  "version": "1.0.0",
+  "description": "AI 협업 블로그 글쓰기 파이프라인 - 주제추천부터 발행까지",
+  "engines": {
+    "node": ">=18"
+  }
+}

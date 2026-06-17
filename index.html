@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>글감 데스크 — 글쓰기 파이프라인</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===================== 헤더 ===================== -->
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div class="masthead-left">
+        <span class="masthead-mark">記</span>
+        <div class="masthead-titles">
+          <h1 class="masthead-title">글감 데스크</h1>
+          <p class="masthead-sub">주제 발굴부터 발행까지, 글 한 편의 모든 공정</p>
+        </div>
+      </div>
+      <div class="masthead-right">
+        <button id="btn-new-post" class="btn btn-primary">+ 새 글 시작</button>
+        <button id="btn-settings" class="btn btn-ghost" title="API 키 / 설정">설정</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== 보드(칸반) 뷰 ===================== -->
+  <main id="board-view" class="board-view">
+    <div class="board-toolbar">
+      <input id="search-box" type="text" placeholder="제목 또는 키워드로 글 찾기…" class="search-input" />
+      <div class="board-stats" id="board-stats"></div>
+    </div>
+
+    <div class="board" id="board">
+      <!-- 단계별 컬럼이 JS로 렌더링됩니다 -->
+    </div>
+  </main>
+
+  <!-- ===================== 글 상세(워크스페이스) 뷰 ===================== -->
+  <main id="post-view" class="post-view hidden">
+    <div class="post-view-header">
+      <button id="btn-back" class="btn btn-ghost">← 보드로</button>
+      <input id="post-title-input" class="post-title-input" placeholder="제목을 입력하세요" />
+      <div class="post-actions">
+        <select id="post-stage-select" class="stage-select"></select>
+        <button id="btn-delete-post" class="btn btn-danger-ghost">삭제</button>
+      </div>
+    </div>
+
+    <nav class="stage-tabs" id="stage-tabs"></nav>
+
+    <div class="stage-panels" id="stage-panels">
+      <!-- 단계별 패널이 JS로 렌더링됩니다 -->
+    </div>
+  </main>
+
+  <!-- ===================== 설정 모달 ===================== -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>설정</h2>
+        <button id="btn-close-settings" class="btn btn-ghost">닫기</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          API 키는 이 화면에서 입력하지 않습니다. Anthropic API 키는 Netlify 환경변수(<code>ANTHROPIC_API_KEY</code>)에만 저장되며, 브라우저에는 절대 노출되지 않습니다.
+        </p>
+        <div class="settings-row">
+          <label>데이터 저장 위치</label>
+          <div class="settings-value" id="storage-mode-label">이 브라우저(로컬 저장소)</div>
+        </div>
+        <div class="settings-row">
+          <label>Firebase 동기화 (선택)</label>
+          <textarea id="firebase-config-input" rows="5" placeholder='{"apiKey": "...", "databaseURL": "https://....firebaseio.com", ...}'></textarea>
+          <button id="btn-save-firebase" class="btn btn-secondary">Firebase 설정 저장 및 연결</button>
+          <p class="hint" id="firebase-status">연결되지 않음 — 로컬 저장소만 사용 중</p>
+        </div>
+        <div class="settings-row">
+          <button id="btn-export-data" class="btn btn-secondary">전체 데이터 내보내기 (JSON)</button>
+          <button id="btn-import-data" class="btn btn-secondary">데이터 가져오기</button>
+          <input type="file" id="import-file-input" accept=".json" class="hidden" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
