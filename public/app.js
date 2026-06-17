@@ -86,6 +86,31 @@ function defaultPublishChecklist() {
   ];
 }
 
+// Firebase Realtime Database는 빈 배열([])을 저장하면 그 키를 통째로 삭제해버리고,
+// 다시 불러올 때 undefined/null로 돌려준다. 그래서 항상 이 함수를 거쳐 배열 필드들이
+// undefined가 되지 않도록 보정한다. 모든 곳에서 post를 가져올 때 이 함수를 통과시킨다.
+function normalizePost(raw) {
+  const base = emptyPost();
+  const post = { ...base, ...raw };
+  const arrayFields = [
+    "ideaCandidates", "researchQueries", "verifyItems",
+    "draftHistory", "seoChecklist", "publishChecklist",
+  ];
+  arrayFields.forEach((key) => {
+    if (!Array.isArray(post[key])) post[key] = [];
+  });
+  const stringFields = [
+    "title", "ideaSeed", "ideaChosen", "researchNotes", "knowhowNotes",
+    "draftPrompt", "draftOutput", "editedContent", "editNotes",
+    "seoTitle", "seoDescription", "seoKeywords", "publishPlatform",
+    "publishUrl", "publishedAt", "notesAfter",
+  ];
+  stringFields.forEach((key) => {
+    if (typeof post[key] !== "string") post[key] = "";
+  });
+  return post;
+}
+
 // ============================================================
 // 기본 Firebase 설정 (정을균 님의 writing-studio-jek 프로젝트)
 // 별도 설정 없이 앱을 처음 열면 자동으로 이 설정으로 연결을 시도합니다.
@@ -156,7 +181,11 @@ const Store = {
     if (!this.firebaseDb) return;
     this.firebaseDb.ref("posts").on("value", (snap) => {
       const remote = snap.val() || {};
-      this.posts = remote;
+      const normalizedRemote = {};
+      Object.keys(remote).forEach((id) => {
+        normalizedRemote[id] = normalizePost(remote[id]);
+      });
+      this.posts = normalizedRemote;
       this.saveLocal();
       renderBoard();
       if (currentPostId && this.posts[currentPostId]) {
@@ -193,10 +222,11 @@ const Store = {
 
   upsertPost(post) {
     post.updatedAt = nowISO();
-    this.posts[post.id] = post;
+    const normalized = normalizePost(post);
+    this.posts[normalized.id] = normalized;
     this.saveLocal();
     if (this.firebaseEnabled && this.firebaseDb) {
-      this.firebaseDb.ref("posts/" + post.id).set(post).catch((e) => {
+      this.firebaseDb.ref("posts/" + normalized.id).set(normalized).catch((e) => {
         console.error("Firebase 저장 실패", e);
       });
     }
@@ -211,11 +241,15 @@ const Store = {
   },
 
   getPost(id) {
-    return this.posts[id];
+    const raw = this.posts[id];
+    if (!raw) return undefined;
+    return normalizePost(raw);
   },
 
   allPosts() {
-    return Object.values(this.posts).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    return Object.values(this.posts)
+      .map((p) => normalizePost(p))
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   },
 };
 
