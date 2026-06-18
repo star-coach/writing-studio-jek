@@ -1,8 +1,8 @@
 [build]
   publish = "public"
-  functions = "netlify/functions"
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
+# /api/claude, /api/search는 각 Edge Function 파일 안의 `config.path`로
+# 직접 라우팅되므로 별도의 [[redirects]] 규칙이 필요 없습니다.
+# (기존 일반 서버리스 함수는 10초 타임아웃 제한이 있어,
+#  웹 검색을 포함한 Claude 응답 생성처럼 오래 걸리는 호출에서 504가 발생했습니다.
+#  Edge Function으로 전환하여 이 제한을 피합니다.)
