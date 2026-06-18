@@ -22,6 +22,16 @@ function uid() {
   return Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
 }
 
+// 현재 사용자가 input/textarea에 포커스를 두고 타이핑 중인지 확인.
+// 이 동안에는 Firebase 원격 동기화로 인한 전체 리렌더링을 막아
+// 입력 중인 칸이 통째로 다시 그려지면서 입력이 끊기는 문제를 방지한다.
+function isEditingActiveElement() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === "TEXTAREA" || tag === "INPUT";
+}
+
 function nowISO() {
   return new Date().toISOString();
 }
@@ -180,6 +190,11 @@ const Store = {
     }
   },
 
+  // 내가 직접 Store.upsertPost()로 Firebase에 쓴 직후 들어오는 echo 콜백을
+  // 구분하기 위한 타임스탬프. 이 값 이후 짧은 시간 안에 트리거된 'value' 콜백은
+  // 화면을 다시 그리지 않고 데이터만 동기화한다.
+  lastLocalWriteAt: 0,
+
   listenFirebase() {
     if (!this.firebaseDb) return;
     this.firebaseDb.ref("posts").on("value", (snap) => {
@@ -190,6 +205,11 @@ const Store = {
       });
       this.posts = normalizedRemote;
       this.saveLocal();
+      const isLikelyEcho = Date.now() - this.lastLocalWriteAt < 1500;
+      // 입력칸에 포커스가 있는 동안(타이핑 중)이거나, 방금 내가 직접 쓴
+      // 데이터의 echo로 추정될 때는 화면을 다시 그리지 않는다.
+      // 그렇지 않으면 타이핑 중에 DOM이 교체되어 입력이 끊긴다.
+      if (isEditingActiveElement() || isLikelyEcho) return;
       renderBoard();
       if (currentPostId && this.posts[currentPostId]) {
         renderPostView();
@@ -229,6 +249,7 @@ const Store = {
     this.posts[normalized.id] = normalized;
     this.saveLocal();
     if (this.firebaseEnabled && this.firebaseDb) {
+      this.lastLocalWriteAt = Date.now();
       this.firebaseDb.ref("posts/" + normalized.id).set(normalized).catch((e) => {
         console.error("Firebase 저장 실패", e);
       });
@@ -501,6 +522,20 @@ function saveAndRefresh(post, skipFullRerender) {
   if (!skipFullRerender) renderBoard();
 }
 
+// 텍스트 입력(input/textarea)처럼 타이핑마다 발생하는 변경은 매 키 입력마다
+// Firebase에 쓰지 않고 일정 시간(디바운스) 후 한 번만 저장한다.
+// 불필요한 네트워크 쓰기를 줄이고, 자신이 쓴 데이터의 echo가 타이핑 도중
+// 돌아와 입력을 끊는 문제를 추가로 줄여준다.
+const _debounceTimers = {};
+function saveAndRefreshDebounced(post, delay = 500) {
+  const key = post.id;
+  if (_debounceTimers[key]) clearTimeout(_debounceTimers[key]);
+  _debounceTimers[key] = setTimeout(() => {
+    delete _debounceTimers[key];
+    Store.upsertPost(post);
+  }, delay);
+}
+
 function advanceStage(post, nextStageId) {
   post.stage = nextStageId;
   saveAndRefresh(post);
@@ -560,13 +595,13 @@ function renderIdeaPanel(container, post) {
 
   container.querySelector("#idea-seed").addEventListener("input", (e) => {
     post.ideaSeed = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
   });
 
   container.querySelector("#idea-chosen").addEventListener("input", (e) => {
     post.ideaChosen = e.target.value;
     if (!post.title) post.title = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
     container.querySelector("#btn-idea-next").disabled = !post.ideaChosen;
   });
 
@@ -673,7 +708,7 @@ function renderResearchPanel(container, post) {
 
   container.querySelector("#research-notes").addEventListener("input", (e) => {
     post.researchNotes = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
   });
 
   container.querySelector("#btn-run-research").addEventListener("click", async () => {
@@ -810,7 +845,7 @@ function renderVerifyPanel(container, post) {
       inp.addEventListener("input", (e) => {
         const item = post.verifyItems.find((i) => i.id === inp.dataset.id);
         item.note = e.target.value;
-        saveAndRefresh(post, true);
+        saveAndRefreshDebounced(post);
       });
     });
     listEl.querySelectorAll(".remove-claim-btn").forEach((btn) => {
@@ -905,7 +940,7 @@ function renderKnowhowPanel(container, post) {
   updateCount();
   textarea.addEventListener("input", (e) => {
     post.knowhowNotes = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
     updateCount();
   });
 
@@ -991,7 +1026,7 @@ function renderDraftPanel(container, post) {
 
   container.querySelector("#draft-prompt").addEventListener("input", (e) => {
     post.draftPrompt = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
   });
 
   container.querySelector("#btn-reset-prompt").addEventListener("click", () => {
@@ -1099,13 +1134,13 @@ function renderEditPanel(container, post) {
   updateCount();
   textarea.addEventListener("input", (e) => {
     post.editedContent = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
     updateCount();
   });
 
   container.querySelector("#edit-notes").addEventListener("input", (e) => {
     post.editNotes = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
   });
 
   container.querySelector("#btn-ai-improve").addEventListener("click", async () => {
@@ -1177,9 +1212,9 @@ function renderSeoPanel(container, post) {
     </div>
   `;
 
-  container.querySelector("#seo-title").addEventListener("input", (e) => { post.seoTitle = e.target.value; saveAndRefresh(post, true); });
-  container.querySelector("#seo-desc").addEventListener("input", (e) => { post.seoDescription = e.target.value; saveAndRefresh(post, true); });
-  container.querySelector("#seo-keywords").addEventListener("input", (e) => { post.seoKeywords = e.target.value; saveAndRefresh(post, true); });
+  container.querySelector("#seo-title").addEventListener("input", (e) => { post.seoTitle = e.target.value; saveAndRefreshDebounced(post); });
+  container.querySelector("#seo-desc").addEventListener("input", (e) => { post.seoDescription = e.target.value; saveAndRefreshDebounced(post); });
+  container.querySelector("#seo-keywords").addEventListener("input", (e) => { post.seoKeywords = e.target.value; saveAndRefreshDebounced(post); });
 
   container.querySelector("#btn-ai-seo").addEventListener("click", async () => {
     const btn = container.querySelector("#btn-ai-seo");
@@ -1316,9 +1351,9 @@ function renderPublishPanel(container, post) {
     renderChecklist();
   });
 
-  container.querySelector("#publish-platform").addEventListener("input", (e) => { post.publishPlatform = e.target.value; saveAndRefresh(post, true); });
-  container.querySelector("#publish-url").addEventListener("input", (e) => { post.publishUrl = e.target.value; saveAndRefresh(post, true); });
-  container.querySelector("#publish-final-content").addEventListener("input", (e) => { post.editedContent = e.target.value; saveAndRefresh(post, true); });
+  container.querySelector("#publish-platform").addEventListener("input", (e) => { post.publishPlatform = e.target.value; saveAndRefreshDebounced(post); });
+  container.querySelector("#publish-url").addEventListener("input", (e) => { post.publishUrl = e.target.value; saveAndRefreshDebounced(post); });
+  container.querySelector("#publish-final-content").addEventListener("input", (e) => { post.editedContent = e.target.value; saveAndRefreshDebounced(post); });
 
   container.querySelector("#btn-copy-content").addEventListener("click", () => {
     navigator.clipboard.writeText(post.editedContent).then(() => showToast("본문을 클립보드에 복사했습니다.", "success"));
@@ -1352,7 +1387,7 @@ function renderDonePanel(container, post) {
   `;
   container.querySelector("#notes-after").addEventListener("input", (e) => {
     post.notesAfter = e.target.value;
-    saveAndRefresh(post, true);
+    saveAndRefreshDebounced(post);
   });
 }
 
@@ -1370,7 +1405,7 @@ function initApp() {
     const post = Store.getPost(currentPostId);
     if (!post) return;
     post.title = e.target.value;
-    saveAndRefresh(post);
+    saveAndRefreshDebounced(post);
   });
 
   document.getElementById("post-stage-select").addEventListener("change", (e) => {
