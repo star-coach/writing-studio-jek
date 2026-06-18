@@ -86,9 +86,12 @@ function defaultPublishChecklist() {
   ];
 }
 
-// Firebase Realtime Database는 빈 배열([])을 저장하면 그 키를 통째로 삭제해버리고,
-// 다시 불러올 때 undefined/null로 돌려준다. 그래서 항상 이 함수를 거쳐 배열 필드들이
+// ============================================================
+// Firebase Realtime DB는 빈 배열([])이나 빈 문자열("")을 저장하면
+// 해당 키를 통째로 삭제하고, 다시 읽을 때 undefined를 반환한다.
+// 그래서 항상 이 함수를 거쳐 배열·문자열 필드들이
 // undefined가 되지 않도록 보정한다. 모든 곳에서 post를 가져올 때 이 함수를 통과시킨다.
+// ============================================================
 function normalizePost(raw) {
   const base = emptyPost();
   const post = { ...base, ...raw };
