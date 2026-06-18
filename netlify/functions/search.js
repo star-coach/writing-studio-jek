@@ -1,39 +1,54 @@
-// Netlify Function: 웹 검색 기능을 포함한 Anthropic API 호출
+// Netlify Edge Function: 웹 검색 기능을 포함한 Anthropic API 호출
 // 리서치/검증 단계에서 사용. Claude의 web_search 도구를 사용해 최신 자료를 찾고 출처를 함께 반환합니다.
+//
+// 기존에는 netlify/functions/search.js (일반 서버리스 함수)였으나,
+// 일반 서버리스 함수는 무료/Personal 플랜에서 10초, Pro 플랜에서도 별도 활성화 없이는
+// 여전히 10초 제한이 걸려 있어 웹 검색을 포함한 Claude 응답 생성 시간(보통 10~30초)을
+// 넘기면 504 Gateway Timeout이 발생했다.
+// Edge Function은 이런 짧은 동기 타임아웃 제한이 없어 이 문제를 근본적으로 피할 수 있다.
 
-exports.handler = async function (event) {
-  const headers = {
+export default async (request) => {
+  const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Content-Type": "application/json",
   };
 
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 200, headers, body: "" };
+  if (request.method === "OPTIONS") {
+    return new Response("", { status: 200, headers: corsHeaders });
   }
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: "POST만 허용됩니다." }) };
+  if (request.method !== "POST") {
+    return new Response(JSON.stringify({ error: "POST만 허용됩니다." }), {
+      status: 405,
+      headers: corsHeaders,
+    });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = Netlify.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: "서버에 ANTHROPIC_API_KEY가 설정되어 있지 않습니다." }),
-    };
+    return new Response(
+      JSON.stringify({ error: "서버에 ANTHROPIC_API_KEY가 설정되어 있지 않습니다." }),
+      { status: 500, headers: corsHeaders }
+    );
   }
 
   let payload;
   try {
-    payload = JSON.parse(event.body);
+    payload = await request.json();
   } catch (e) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: "잘못된 요청 본문입니다." }) };
+    return new Response(JSON.stringify({ error: "잘못된 요청 본문입니다." }), {
+      status: 400,
+      headers: corsHeaders,
+    });
   }
 
   const { query, instruction } = payload;
   if (!query) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: "query가 필요합니다." }) };
+    return new Response(JSON.stringify({ error: "query가 필요합니다." }), {
+      status: 400,
+      headers: corsHeaders,
+    });
   }
 
   try {
@@ -64,15 +79,21 @@ exports.handler = async function (event) {
     const data = await response.json();
 
     if (!response.ok) {
-      return {
-        statusCode: response.status,
-        headers,
-        body: JSON.stringify({ error: data.error?.message || "Anthropic API 오류", detail: data }),
-      };
+      return new Response(
+        JSON.stringify({ error: data.error?.message || "Anthropic API 오류", detail: data }),
+        { status: response.status, headers: corsHeaders }
+      );
     }
 
-    return { statusCode: 200, headers, body: JSON.stringify(data) };
+    return new Response(JSON.stringify(data), { status: 200, headers: corsHeaders });
   } catch (err) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: corsHeaders,
+    });
   }
+};
+
+export const config = {
+  path: "/api/search",
 };
